@@ -1,5 +1,8 @@
 # Local routing MVP runbook
 
+New to this stack? Start with the [junior engineer learning guide](LEARNING_GUIDE.md)
+for component responsibilities, request flow, debugging and extension examples.
+
 ## Status
 
 Implementation assets are present. **Live Bedrock inference and Docker builds

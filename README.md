@@ -38,6 +38,7 @@ Requires Python 3.14+ and [uv](https://docs.astral.sh/uv/) installed.
 |---|---|
 | Set up and test this fork's agentgateway / Relay / Switchyard MVP | [Local routing runbook (live validation pending)](local-routing/README.md) |
 | Understand the local routing architecture and acceptance contract | [Local routing design](local-routing/DESIGN.md) |
+| Learn the components, request flow, debugging and extension patterns | [Junior engineer learning guide](local-routing/LEARNING_GUIDE.md) |
 | Get the agent running locally with Python and `uv` | [Quickstart (Local Python)](docs/foundry/quickstart.md) |
 | Get the agent running in a container | [Quickstart (Docker Compose)](docs/foundry/quickstart-docker.md) |
 | Understand the codebase (file layout, packages, extension points) | [AGENTS.md](AGENTS.md) |
