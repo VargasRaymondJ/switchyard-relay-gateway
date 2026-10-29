@@ -1,3 +1,16 @@
+# Local routing MVP exception
+
+The optional `local-routing/compose.yaml` stack is a trusted-local-development
+experiment, not a production security profile or compliance claim. It publishes
+unauthenticated HTTP on loopback ports 8000/8080. Relay is internal; only Relay
+receives the Bedrock API key. The native Switchyard plugin uses a narrowly scoped
+integrity-only trust exception and executes inside Relay. Provider traffic uses
+HTTPS. Evidence may include payloads: use synthetic prompts, keep `.env` and
+evidence out of Git/build contexts, restrict access, and delete evidence after
+review. Container environment secrets remain accessible to Docker administrators.
+Unknown model names are directed to an unserved loopback upstream; this is not
+an authentication or network-isolation boundary.
+
 # Security posture
 
 This directory tracks the security posture and production-readiness

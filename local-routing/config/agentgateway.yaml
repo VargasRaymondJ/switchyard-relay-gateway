@@ -1,0 +1,19 @@
+config: {}
+binds:
+  - port: 8080
+    listeners:
+      - name: routing
+        protocol: HTTP
+        routes:
+          - name: chat-completions
+            matches:
+              - path:
+                  exact: /v1/chat/completions
+                method: POST
+            policies:
+              timeout:
+                requestTimeout: 65s
+                backendRequestTimeout: 65s
+                responseIdleTimeout: 65s
+            backends:
+              - host: relay:4040

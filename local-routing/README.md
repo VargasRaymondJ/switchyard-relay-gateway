@@ -1,242 +1,235 @@
-# Local routing MVP: setup, operation, and API testing
+# Local routing MVP runbook
 
-## Status and maintenance
+## Status
 
-**Planning / implementation pending.** This is the living runbook for the
-three-service routing stack. No full-stack build or inference test has passed
-yet. The root `compose.yaml` is the inherited base-agent setup, **not** this
-routing experiment.
+Implementation assets are present. **Live Bedrock inference and Docker builds
+are not yet verified.** Do not interpret native-process tests as Docker or ARM64
+validation. Update this document in every implementation PR/commit that changes
+setup, operation, or evidence. [Design](DESIGN.md).
 
-Update this file in each implementation PR when prerequisites, configuration,
-commands, or verified behavior change. Replace planned steps with tested steps;
-record the platform and results in the validation table below. Do not mark an
-issue complete merely because its procedure is documented.
-
-| Work | Tracking | Current status |
-| --- | --- | --- |
-| Design and acceptance contract | [#1](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/1) | Pending |
-| Relay / plugin packaging | [#2](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/2) | Pending |
-| Bedrock route and unknown-model rejection | [#3](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/3) | Pending |
-| Gateway forwarding and logs | [#4](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/4) | Pending |
-| Compose integration | [#5](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/5) | Pending |
-| Success tests and evidence | [#6](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/6) | Pending |
-| Failure and recovery tests | [#7](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/7) | Pending |
-| Runbook and platform validation | [#8](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/8) | Initial runbook only |
-
-## What this project will run
+**Compatibility fix:** the pinned Foundry NIMS factory supplies `httpx.Client`,
+while the locked Strands OpenAI adapter requires `httpx.AsyncClient`. With the
+owner's approval, a composition-root provider override supplies a fresh async
+transport per request while preserving NIMS formatting and TLS configuration.
+No shared package or dependency-lock changes are made.
 
 ```text
-API client → base agent → agentgateway → Relay + Switchyard plugin → Bedrock
-             :8000        :8080          :4040 (internal)           HTTPS
+API client → base agent :8000 → agentgateway :8080
+           → Relay + Switchyard :4040 (internal) → Bedrock HTTPS
 ```
 
-- Three application containers; Switchyard is loaded inside Relay.
-- Agent-facing model alias: `switchyard/mvp`.
-- Target: NVIDIA Nemotron Nano 9B v2, `nvidia.nemotron-nano-9b-v2`.
-- AWS region: `us-east-1`.
-- Passthrough routing: success means the target receives the request and its
-  response returns to the agent. No classifier or second-model comparison.
-- No Ollama, provider fallback, database, collector, tool integrations, or
-  persistent sessions. Unknown model names must fail.
-- Local HTTP only; host ports bind to loopback. This is not a production setup.
+The alias `switchyard/mvp` targets NVIDIA Nemotron Nano 9B v2
+(`nvidia.nemotron-nano-9b-v2`) in `us-east-1`. Routing is passthrough, not a
+classifier. No Ollama, provider fallback, tools, persistent sessions, database,
+or telemetry collector. Unknown models fail against an unserved Relay loopback
+upstream. This is a trusted-local-development setup, not production.
 
 The [AWS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-nvidia-nvidia-nemotron-nano-9b-v2.html)
-documents Chat Completions support and regional availability. It currently
-lists the model as Legacy with EOL on March 30, 2027. Recheck lifecycle and
-account availability before implementation; never silently substitute a model.
+lists this model as Legacy, EOL March 30, 2027. Recheck access/lifecycle rather
+than silently changing the target.
 
-## Prerequisites
+## Requirements
 
-- Git and access to this repository, release artifacts, package registries,
-  container registries, and the Bedrock endpoint.
-- Docker Engine or Docker Desktop with Docker Compose v2 and Linux containers.
-- AMD64 or ARM64 host/runtime. Linux, macOS, and Windows support is intended,
-  not yet verified. Minimum Docker resources and Compose version remain to be
-  measured and pinned during implementation.
-- A POSIX-compatible shell for the examples below (Linux/macOS shell, or WSL
-  on Windows), plus `curl`; automated tests may add documented dependencies.
-- Available local ports 8000 and 8080.
-- Bedrock account authorization for the target model and a valid Bedrock API
-  key. Inference incurs AWS charges. Credentials must never be pasted into
-  issues, pull requests, chat, or logs.
+- Git, Docker Engine/Desktop with Linux containers and Compose v2 supporting
+  `up --wait` (configuration validated with Compose 2.40.3).
+- AMD64 or ARM64 runtime. Linux/macOS/Windows hosts are intended; see validation
+  limitations below. Minimum resource requirements have not been measured.
+- Network access to GitHub releases, Debian/package/container registries, and
+  the selected Bedrock endpoint.
+- Ports 8000 and 8080 free. Only loopback host addresses are published.
+- AWS account access to the target and a valid Bedrock API key; calls cost money.
+- POSIX shell and curl for examples (WSL on Windows). Python 3.11+ is needed
+  only for the host smoke-test script; the agent's Python runs in its container.
 
-Python is intended to run inside the agent container; a host Python install is
-not required for the Compose workflow. Editing/testing the Python source outside
-Docker follows the repository's separate contributor setup.
+## Environment setup
 
 ```bash
 git clone https://github.com/VargasRaymondJ/switchyard-relay-gateway.git
-cd switchyard-relay-gateway
+cd switchyard-relay-gateway/local-routing
 docker version
 docker compose version
-```
-
-## Environment setup — planned, not runnable yet
-
-Issue #5 will add `local-routing/compose.yaml` and `.env.example`. Do not run
-the following until those files exist and this section has been verified.
-
-```bash
-cd local-routing
 cp .env.example .env
 chmod 600 .env
-# Edit .env locally using an editor; do not paste a key into shell commands.
-```
-
-The intended runtime secret is `AWS_BEARER_TOKEN_BEDROCK`. Compose must inject
-it into **Relay only**, never the agent or agentgateway. The template will
-contain placeholders only. Native AWS profile/SigV4 authentication is not the
-planned authentication path.
-
-Before entering a real secret, confirm the ignore rule is in place:
-
-```bash
 git check-ignore .env
 ```
 
-If that command does not identify `.env` as ignored, stop and fix the ignore
-configuration first. Generated responses and evidence must also be ignored.
-Do not paste rendered Compose configuration into tickets: environment expansion
-can expose credentials. Do not enable shell tracing around secret operations.
+Edit `.env` locally to supply `AWS_BEARER_TOKEN_BEDROCK`. Never paste the value
+into chat, tickets, shell commands, Git, or build arguments. It is passed to
+Relay only. Compose rejects an empty value. No AWS profile or SigV4 adapter is
+used. Avoid printing rendered Compose config: secret expansion can expose it.
+The local Docker build context explicitly excludes secrets and evidence.
 
-### Configuration contract
+## Build and start
 
-| Component | Intended configuration |
-| --- | --- |
-| Agent | `provider: nims`, `model_id: switchyard/mvp`, `nims_base_url: http://agentgateway:8080/v1`; nonsecret SDK placeholder only |
-| Agent listener | `HOST=0.0.0.0`, `PORT=8000`, `STRANDS_TLS_MODE=platform`; publish `127.0.0.1:8000` |
-| Agent config | Read-only `/app/config.yaml`; no memory, tools, external telemetry, or session persistence |
-| agentgateway | Ordinary HTTP forwarding of `/v1/chat/completions` to `relay:4040`; publish `127.0.0.1:8080` |
-| Relay | Direct gateway mode on `0.0.0.0:4040`, no host port; one active Switchyard plugin |
-| Switchyard | `openai_chat` client, stable alias, configured NVIDIA target, server-owned credential |
-| Bedrock | Candidate base URL `https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1`; live compatibility is an acceptance gate |
-
-Relay 0.11.0 and plugin 0.3.2 are the initial packaging candidates. Match Linux
-CPU/libc, verify committed artifact checksums, and pin container digests.
-The agentgateway release/digest and inherited agent image digests remain TBD.
-Do not assume YAML `streaming`, `temperature`, or `max_tokens` settings are
-forwarded by the pinned NIMS factory; verify actual request behavior.
-
-## Start and inspect services — planned
-
-From `local-routing/`, once the Compose assets are implemented:
+All Compose commands in this document run from `local-routing/`, not the root.
+The inherited root Compose file is **not** the routing stack.
 
 ```bash
-docker compose --env-file .env -f compose.yaml up --build -d
+docker compose --env-file .env -f compose.yaml config --quiet
+docker compose --env-file .env -f compose.yaml up --build -d --wait --wait-timeout 120
 docker compose --env-file .env -f compose.yaml ps
 curl --fail-with-body --silent --show-error --max-time 10 \
   http://127.0.0.1:8000/api/v1/health
 ```
 
-Startup order is not readiness. Wait for service readiness and inspect Relay's
-startup output for **active Switchyard plugin** before inference. A healthy
-agent alone does not prove provider connectivity. Exact readiness/log commands
-will be added with issues #2 and #5. Review logs locally before sharing them.
+Relay startup enables and validates the plugin in ephemeral writable state,
+then starts the gateway. A native plugin activation failure prevents startup.
+Readiness waits for Relay, then gateway, then agent; it does not prove Bedrock
+authentication. Inspect logs locally:
 
-## Test through the base agent
+```bash
+docker compose --env-file .env -f compose.yaml logs --tail 50 relay agentgateway agent
+```
 
-These examples use the existing agent HTTP API contract. They have **not** been
-run through the planned routing stack. Run them only after the stack is ready.
-The client timeout below is a provisional test bound, not a configured server
-or provider deadline.
+Do not share logs without inspecting/redacting them. Relay evidence can contain
+request/response data even with full payload export disabled.
+
+Release versions: Relay 0.11.0, Switchyard plugin 0.3.2, agentgateway 1.7.0.
+`checksums.sha256` contains expected release hashes for AMD64 and ARM64.
+Base images are digest-pinned; distribution packages are not snapshot-pinned,
+so this is not a bit-for-bit reproducibility guarantee.
+
+## Call the base agent API
+
+Use synthetic prompts and omit `session_id` to avoid implicit session storage.
 
 ### Ordinary response
 
 ```bash
-curl --fail-with-body --silent --show-error --max-time 120 \
+curl --fail-with-body --silent --show-error --max-time 240 \
   -X POST http://127.0.0.1:8000/api/v1/query \
   -H 'Content-Type: application/json' \
   --data '{"query":"Reply with MVP_OK"}'
 ```
 
-Expected: a successful JSON response with nonempty `content`. Exact model
-wording is not an assertion. Do **not** include `session_id`: it can enable
-session storage. An ordinary agent response does not prove that its internal
-model call was non-streaming.
+Require a successful JSON response with nonempty `content`; exact wording is
+not an assertion. The ordinary agent API can use a streaming model call
+internally, so it does not establish upstream non-streaming coverage.
 
 ### Streaming response
 
 ```bash
-curl --no-buffer --fail-with-body --silent --show-error --max-time 120 \
+curl --no-buffer --fail-with-body --silent --show-error --max-time 240 \
   -X POST http://127.0.0.1:8000/api/v1/query/stream \
   -H 'Content-Type: application/json' \
   -H 'Accept: text/event-stream' \
   --data '{"query":"Reply with MVP_OK"}'
 ```
 
-Expected: nonempty content in `token` and/or `result` events and a terminal
-`done` event, with no `error` event or premature disconnect. HTTP 200 and a zero
-curl exit status alone are insufficient: SSE errors can arrive inside a
-successful HTTP response. Issue #6 will add automated assertions.
+Require nonempty content in `token`/`result`, terminal `done`, no error event,
+and no premature disconnect. HTTP 200 or curl exit zero alone is insufficient.
+See the [agent API contract](../docs/foundry/guides/http-api.md).
 
-The [agent API guide](../docs/foundry/guides/http-api.md) defines response fields
-and SSE events.
+## Automated tests
 
-## Prove routing and test failures
+Run the inexpensive response-contract tests without Docker or credentials:
 
-For each test run, use a fresh ignored evidence directory, synthetic prompts,
-and serial requests. Capture:
+```bash
+python3 -m unittest discover -s scripts -p 'test_*.py'
+```
 
-- Agent result and available correlation ID.
-- Gateway access record with request time, path, status, and duration.
-- `switchyard.routing.decision` naming the expected selected model and
-  algorithm; inspect `served_model` when present, treating missing data as
-  unknown rather than a match.
-- Every observed attempt, without assuming automatic cross-service correlation
-  or one upstream call per agent request.
+For live tests, first stop the regular stack to free ports. The suite creates
+a fresh Compose project and evidence volume, runs cases serially, and explicitly
+requires acknowledgement of live calls and charges:
 
-Gracefully stop Relay before final ATOF assertions so buffered records flush.
-Evidence may contain payload data; never commit it or authorization headers.
-Evidence location, automated commands, and shutdown grace period remain pending.
+```bash
+docker compose --env-file .env -f compose.yaml down
+python3 scripts/smoke.py --confirm-live --build
+# Includes disruptive failures and recovery:
+python3 scripts/smoke.py --confirm-live --failures
+```
 
-The smoke suite must also send explicit `stream=false` and `stream=true` Chat
-Completions requests through agentgateway; agent API tests alone do not prove
-both upstream protocol paths.
+The suite tests both agent API paths and explicit streaming/non-streaming
+Chat Completions through the gateway. It checks content, terminal events,
+gateway access records, and expected `switchyard.routing.decision` metadata.
+Missing `served_model` is unknown, not proof of a match.
 
-Issue #7 will automate bounded tests for unavailable gateway, unavailable Relay,
-missing/invalid provider credentials, unknown aliases/direct target names, and
-interrupted streams. Restore configuration and services after each case and
-finish with a successful agent query. Never destroy or print the real credential
-to simulate an authentication failure. Report missing access as **BLOCKED**, not
-PASS; distinguish mocked faults from live-provider evidence.
+Failure tests cover stopped gateway/Relay, unknown aliases/direct model names,
+invalid credentials, missing-secret configuration, stream interruption, and
+recovery. They never overwrite the saved real credential. A stream that finishes
+before interruption reports BLOCKED rather than PASS. Results exit codes:
+0 PASS, 1 FAIL, 2 BLOCKED. Inspect `evidence/routing-test-*/results.json`.
 
-## Restart, shutdown, and cleanup — planned
+The provider timeout is 60 seconds with zero provider retries. Gateway header
+and idle deadlines are 65 seconds. The unchanged agent SDK can retry; the
+client test deadline is 240 seconds. Test commands also have process deadlines.
+No claim of a one-to-one agent/provider request count is made.
 
-Changing the target or routing TOML requires a Relay restart; do not assume hot
-reload. From `local-routing/` after implementation:
+The suite gracefully stops Relay to flush ATOF and copies new records after each
+success case. It preserves all final events and the evidence volume. Evidence
+directories are ignored and private; use synthetic data only. A provider access
+failure must be investigated before reporting the MVP passed.
+
+## Configuration and restart
+
+- `config/agent.yaml`: NIMS provider, gateway URL, alias, no tools/memory.
+- `config/agentgateway.yaml`: exact POST route, deadlines, normal access logging.
+- `config/relay/`: runtime and plugin configuration, required activation.
+- `config/routes.toml`: alias, target, provider endpoint, secret variable name.
+- `compose.yaml`: three services, one network, Relay-only provider secret.
+
+The agent Dockerfile's image pins changed and the composition root registers
+the NIMS async-client compatibility override. The lockfile is preserved.
+The NIMS factory does not pass all generic
+temperature/token/streaming options through; do not assume YAML alone changes
+those request fields.
 
 ```bash
 docker compose --env-file .env -f compose.yaml restart relay
-# Wait for plugin activation/readiness before making another request.
+docker compose --env-file .env -f compose.yaml up -d --wait --wait-timeout 120
 docker compose --env-file .env -f compose.yaml down
 ```
 
-Preserve evidence until assertions and review are complete. Do not use `down -v`
-or delete evidence indiscriminately. The runbook will document exact evidence
-cleanup paths once storage layout is implemented. Protect `.env` after shutdown;
-stopping containers does not revoke a Bedrock API key.
+Restart Relay after editing TOML; there is no assumed hot reload. `down` retains
+the evidence volume. After reviewing evidence, explicitly remove only the
+appropriate project volume with `docker volume rm <exact-volume-name>`. Never
+use broad volume pruning. Stopping services does not revoke a provider key.
 
 ## Troubleshooting
 
-| Symptom | First check |
+| Symptom | Check |
 | --- | --- |
-| Connection refused on port 8000 | Container status, listener binding, port conflict, readiness |
-| Agent healthy but inference fails | Gateway forwarding, Relay plugin activation, provider access |
-| Bedrock authentication/authorization error | Key validity and permissions, target availability; never print key |
-| Unknown model succeeds | Fail-closed configuration is missing; acceptance fails |
-| Stream returns HTTP 200 but no completion | SSE error events, disconnects, timeout, upstream failure |
-| Routing evidence missing | Plugin active, alias matches, exporter enabled, writable directory, graceful flush |
-| Native plugin load fails | CPU/libc mismatch, manifest, checksum, trust policy, Relay/plugin compatibility |
+| Port 8000 unavailable | Port conflict, container logs, listener, health checks |
+| Healthy agent but failed query | Gateway route, plugin activation, provider access |
+| Plugin startup failure | Matching CPU/libc, checksum, manifest, trust policy |
+| Unknown model succeeds | Fail-closed configuration regressed; do not accept |
+| HTTP 200 stream without done | Error events, provider interruption, deadlines |
+| No routing decision | Alias match, activation, exporter write access, graceful flush |
+| Smoke suite Compose failure | Inspect Docker locally; script suppresses potentially sensitive stderr |
 
-## Validation record
+## Validation and remaining work
 
-| Check | Platform | Result |
-| --- | --- | --- |
-| Agent API examples checked against repository documentation | Source review only | Contract reviewed; not executed |
-| AMD64 build and plugin activation | TBD | Not run |
-| ARM64 build and plugin activation | TBD | Not run |
-| Full-path ordinary and streamed inference | TBD | Not run; requires secure Bedrock credential |
-| Failure/recovery suite | TBD | Not run |
+Validated in the development sandbox on native Linux AMD64:
 
-Record tested commits, artifact versions/digests, host OS/CPU, native versus
-emulated execution, and remaining blockers here as implementation progresses.
+- Release checksums for downloaded AMD64 artifacts.
+- Pinned gateway config validation, Relay/plugin startup and health.
+- Gateway forwarding, access records, unknown-model failure.
+- Compose 2.40.3 configuration validation (no Docker daemon).
+- Agent configuration parsing; seven response/evidence parser tests.
+- Required `just check`: lint, formatting, security lint, type checking and
+  150 tests passed, with 88.76% coverage. Seven additional smoke-parser tests pass.
+- Both base-agent endpoints now reach the gateway/Relay with an invalid
+  credential. Ordinary calls return HTTP 500 and streaming calls emit an error
+  event. Gateway logs confirm HTTP 401 from the provider path, not a successful
+  inference. The previous NIMS transport type failure is resolved.
+- A direct gateway request for the managed alias using an intentionally invalid
+  credential reaches the Bedrock path and returns HTTP 401. Flushed ATOF contains
+  Switchyard error/metric records. This proves plugin execution on failure only,
+  not a successful provider response or correct account/model authorization.
+
+**Not verified:** Docker image builds/execution, ARM64 execution, Windows/macOS,
+valid Bedrock ordinary/streamed inference, live success/evidence and failure
+suite, or resource sizing. No successful provider response is claimed.
+
+Three inherited Markdown code-block formatting errors were corrected with the
+owner's approval so the required formatting gate passes.
+
+Tracking: [#1 design](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/1),
+[#2 packaging](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/2),
+[#3 provider](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/3),
+[#4 gateway](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/4),
+[#5 Compose](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/5),
+[#6 success](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/6),
+[#7 failures](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/7),
+[#8 runbook](https://github.com/VargasRaymondJ/switchyard-relay-gateway/issues/8).
+Do not close runtime-validation issues until their remaining gates pass.

@@ -1,0 +1,17 @@
+schema_version = 1
+
+[llm_clients.bedrock]
+format = "openai_chat"
+base_url = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1"
+api_key_env = "AWS_BEARER_TOKEN_BEDROCK"
+max_retries = 0
+timeout_ms = 60000
+
+[targets.primary]
+id = "nvidia.nemotron-nano-9b-v2"
+llm_client = "bedrock"
+
+[routes.mvp]
+id = "switchyard/mvp"
+type = "passthrough"
+target = "primary"

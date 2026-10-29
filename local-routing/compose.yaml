@@ -1,0 +1,64 @@
+name: switchyard-routing
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: relay
+    environment:
+      AWS_BEARER_TOKEN_BEDROCK: ${AWS_BEARER_TOKEN_BEDROCK:?Set AWS_BEARER_TOKEN_BEDROCK in .env}
+    volumes:
+      - ./config/relay:/etc/nemo-relay:ro
+      - ./config/routes.toml:/etc/switchyard/routes.toml:ro
+      - evidence:/evidence
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "3", "http://127.0.0.1:4040/healthz"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+    stop_grace_period: 30s
+    networks: [routing]
+  agentgateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+    volumes:
+      - ./config/agentgateway.yaml:/etc/agentgateway/config.yaml:ro
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      relay:
+        condition: service_healthy
+    healthcheck:
+      # A 404 on an unmatched route proves the listener is responding.
+      test: ["CMD-SHELL", "test \"$$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8080/ready)\" = 404"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+    stop_grace_period: 30s
+    networks: [routing]
+  agent:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8000"
+      STRANDS_TLS_MODE: platform
+    volumes:
+      - ./config/agent.yaml:/app/config.yaml:ro
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      agentgateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+    stop_grace_period: 30s
+    networks: [routing]
+networks:
+  routing: {}
+volumes:
+  evidence: {}

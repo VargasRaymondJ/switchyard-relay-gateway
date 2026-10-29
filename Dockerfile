@@ -1,6 +1,6 @@
 # Public Chainguard Python dev image (currently Python 3.14).
 # `latest-dev` is the floating tag offered in the free public catalog.
-FROM cgr.dev/chainguard/python:latest-dev AS base
+FROM cgr.dev/chainguard/python:latest-dev@sha256:f02252a886301e9df468bfee21b56a4540e90089850119f3bfbea87741df4a19 AS base
 
 # switch to root user
 USER root
@@ -9,7 +9,7 @@ USER root
 
 FROM base AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9@sha256:538e0b39736e7feae937a65983e49d2ab75e1559d35041f9878b7b7e51de91e4 /uv /uvx /bin/
 
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     UV_COMPILE_BYTECODE=true \

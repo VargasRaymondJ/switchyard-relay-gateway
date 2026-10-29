@@ -1,0 +1,5 @@
+# Unmanaged model traffic must never leave this container. Switchyard intercepts
+# managed aliases before Relay's ordinary upstream handler. Port 1 is unserved.
+openai_base_url = "http://127.0.0.1:1/v1"
+anthropic_base_url = "http://127.0.0.1:1"
+chatgpt_codex_base_url = "http://127.0.0.1:1"

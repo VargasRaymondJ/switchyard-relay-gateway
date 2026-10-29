@@ -1,0 +1,17 @@
+model:
+  provider: nims
+  model_id: switchyard/mvp
+  nims_base_url: http://agentgateway:8080/v1
+  nims_api_key: local-mvp
+agent_name: local-routing-agent
+agent_description: Local Switchyard routing experiment
+agent_version: "1.0"
+system_prompt: You are a helpful assistant. Answer briefly in plain text.
+tls_mode: platform
+observability_enabled: false
+enable_memory: false
+tools_modules: []
+tools_files: []
+mcp_servers: []
+a2a_servers: []
+log_level: INFO

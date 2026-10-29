@@ -23,6 +23,7 @@ from foundry_strands_agent import AgentConfig, AgentFactory, StrandsAgentBackend
 
 from strands_base_agent.application.factory import create_application_container
 from strands_base_agent.application.lifecycle import boot_system
+from strands_base_agent.application.nims import MODEL_PROVIDER_FACTORIES
 from strands_base_agent.application.runtime_container import set_runtime_container
 
 logger = logging.getLogger(__name__)
@@ -222,7 +223,7 @@ def start_server() -> None:
     # Pass session_manager_factories / model_provider_factories dicts to extend.
     container.register_factory(
         AgentFactory,
-        lambda: StrandsAgentFactory(container),
+        lambda: StrandsAgentFactory(container, model_provider_factories=MODEL_PROVIDER_FACTORIES),
         singleton=True,
     )
 

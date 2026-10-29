@@ -77,3 +77,4 @@ specs/
 tests/
 # Strands FileSessionManager local storage (auto-created on first request)
 sessions/
+local-routing/evidence/

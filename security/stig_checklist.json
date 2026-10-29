@@ -2991,7 +2991,7 @@
       "severity": "medium",
       "title": "The application must maintain the confidentiality and integrity of information during preparation for transmission.",
       "status": "needs_human_review",
-      "finding_details": "Not assessed by any domain worker. This V-ID covers a procedural, documentation, or cross-cutting control outside the scope of automated code analysis. Manual review required.",
+      "finding_details": "Manual review required. The optional local-routing MVP intentionally uses unauthenticated HTTP on loopback-published agent/gateway ports and its internal Compose network. Only Relay receives the provider API key; Bedrock traffic uses HTTPS. Native plugin integrity-only trust and potentially sensitive local ATOF evidence are development exceptions documented in security/README.md. This does not establish production compliance.",
       "domains_assessed": [],
       "responsibility": "baseline",
       "responsibility_rationale": "Code-level application control — baseline implementation"
