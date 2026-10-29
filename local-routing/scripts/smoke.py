@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 import urllib.error
-import urllib.request
+import urllib.parse
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -63,20 +63,44 @@ def assert_response(body: bytes, *, stream: bool, agent: bool) -> None:
         raise AssertionError("Stream lacks content or terminal completion")
 
 
-def request(url: str, payload: dict | None = None) -> tuple[int, bytes]:
+def request(url: str, payload: dict | None = None, *, timeout: float = DEADLINE) -> tuple[int, bytes]:
+    """Read a local API response under one deadline, including streamed bodies."""
+    target = urllib.parse.urlsplit(url)
+    if target.scheme != "http" or target.hostname != "127.0.0.1":
+        raise ValueError("Acceptance probes must use the local loopback HTTP APIs")
+    deadline = time.monotonic() + timeout
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    connection = http.client.HTTPConnection(target.hostname, target.port, timeout=timeout)
     try:
-        with urllib.request.urlopen(req, timeout=DEADLINE) as response:  # noqa: S310
-            deadline = time.monotonic() + DEADLINE
-            chunks = []
-            while chunk := response.read1(65536):
-                chunks.append(chunk)
-                if time.monotonic() > deadline:
-                    raise TimeoutError("Overall response deadline exceeded")
-            return response.status, b"".join(chunks)
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read()
+        connection.connect()
+        transport = connection.sock
+        assert transport is not None
+
+        def remaining() -> float:
+            value = deadline - time.monotonic()
+            if value <= 0:
+                raise TimeoutError("Overall response deadline exceeded")
+            return value
+
+        transport.settimeout(remaining())
+        connection.request(
+            "POST" if data is not None else "GET",
+            target.path,
+            body=data,
+            headers={"Content-Type": "application/json"},
+        )
+        transport.settimeout(remaining())
+        response = connection.getresponse()
+        chunks = []
+        while not response.isclosed():
+            transport.settimeout(remaining())
+            chunk = response.read1(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return response.status, b"".join(chunks)
+    finally:
+        connection.close()
 
 
 class Suite:
@@ -115,7 +139,7 @@ class Suite:
         end = time.monotonic() + 90
         while time.monotonic() < end:
             try:
-                code, body = request("http://127.0.0.1:8000/api/v1/health")
+                code, body = request("http://127.0.0.1:8000/api/v1/health", timeout=3)
                 if code == 200 and body:
                     return
             except (OSError, urllib.error.URLError):

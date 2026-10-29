@@ -205,9 +205,9 @@ Validated in the development sandbox on native Linux AMD64:
 - Pinned gateway config validation, Relay/plugin startup and health.
 - Gateway forwarding, access records, unknown-model failure.
 - Compose 2.40.3 configuration validation (no Docker daemon).
-- Agent configuration parsing; seven response/evidence parser tests.
+- Agent configuration parsing; nine smoke-helper tests including HTTP deadlines.
 - Required `just check`: lint, formatting, security lint, type checking and
-  150 tests passed, with 88.76% coverage. Seven additional smoke-parser tests pass.
+  150 tests passed, with 88.76% coverage. Nine additional smoke-helper tests pass.
 - Both base-agent endpoints now reach the gateway/Relay with an invalid
   credential. Ordinary calls return HTTP 500 and streaming calls emit an error
   event. Gateway logs confirm HTTP 401 from the provider path, not a successful
